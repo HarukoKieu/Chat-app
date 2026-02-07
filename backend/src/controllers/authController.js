@@ -51,7 +51,7 @@ export const signUp = async (request, response) => {
       return response.status(409).json({ message: "Email already exists" });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       username: username.toLowerCase(),
@@ -65,7 +65,7 @@ export const signUp = async (request, response) => {
     const accessToken = jwt.sign(
       { userId: user._id },
       process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: ACCESS_TOKEN_TTL }
+      { expiresIn: ACCESS_TOKEN_TTL },
     );
 
     const refreshToken = createRefreshToken();
@@ -135,7 +135,7 @@ export const signIn = async (request, response) => {
     const accessToken = jwt.sign(
       { userId: user._id },
       process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: ACCESS_TOKEN_TTL }
+      { expiresIn: ACCESS_TOKEN_TTL },
     );
 
     const refreshToken = createRefreshToken();
@@ -217,15 +217,29 @@ export const refreshToken = async (request, response) => {
       return response.status(403).json({ message: "Refresh token expired" });
     }
 
-    const accessToken = jwt.sign(
+    const newAccessToken = jwt.sign(
       { userId: session.userId },
       process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: ACCESS_TOKEN_TTL }
+      { expiresIn: ACCESS_TOKEN_TTL },
     );
 
+    const newRefreshToken = createRefreshToken();
+    const newRefreshTokenHash = hashToken(newRefreshToken);
+
+    session.refreshTokenHash = newRefreshTokenHash;
+    session.expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL);
+    await session.save();
+
+    response.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: REFRESH_TOKEN_TTL,
+    });
+
     return response.status(200).json({
-      message: "Access token refreshed",
-      accessToken,
+      message: "Token refreshed",
+      accessToken: newAccessToken,
     });
   } catch (error) {
     console.error("Error while calling refreshToken", error);
