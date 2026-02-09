@@ -3,7 +3,7 @@ import {
   createRefreshToken,
   hashToken,
   REFRESH_TOKEN_TTL,
-} from "./authUtils.js";
+} from "../utils/authUtils.js";
 
 export const createSession = async (userId) => {
   const refreshToken = createRefreshToken();
