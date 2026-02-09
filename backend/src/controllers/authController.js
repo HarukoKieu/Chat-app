@@ -2,7 +2,7 @@ import bcrypt from "bcrypt";
 import User from "../models/User.js";
 import Session from "../models/Session.js";
 
-import {
+import { 
   createAccessToken,
   createRefreshToken,
   hashToken,
