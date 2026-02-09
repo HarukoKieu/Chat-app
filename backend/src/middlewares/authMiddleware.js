@@ -1,45 +1,44 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
-// authorization - verify who the user is
-export const protectRoute = async (request, response, next) => {
+export const protectRoute = async (req, res, next) => {
   try {
-    // get token from header
-    const authHeader = request.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
-      return response.status(401).json({ message: "Unauthorized" });
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Access token required" });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    if (!process.env.ACCESS_TOKEN_SECRET) {
+      throw new Error("Missing ACCESS_TOKEN_SECRET");
     }
 
     // verify token
-    jwt.verify(
-      token,
-      process.env.ACCESS_TOKEN_SECRET,
-      async (error, decodedUser) => {
-        if (error) {
-          console.error(error);
-          return response
-            .status(403)
-            .json({ message: "Access token expired or invalid" });
-        }
+    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
-        const user = await User.findById(decodedUser.userId).select(
-          "-hashedPassword",
-        );
+    // optional: skip DB call if you trust token fully
+    const user = await User.findById(decoded.userId).select("-hashedPassword");
 
-        if (!user) {
-          return response.status(404).json({ message: "User not found" });
-        }
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-        // attach user to request
-        request.user = user;
-        next();
-      },
-    );
+    req.user = user;
+    next();
   } catch (error) {
-    console.error("Error while verifying jwt in middleware", error);
-    return response.status(500).json({ message: "Internal server error" });
+    console.error("protectRoute error:", error);
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({
+        message: "Access token expired",
+      });
+    }
+
+    return res.status(403).json({
+      message: "Invalid access token",
+    });
   }
 };
 

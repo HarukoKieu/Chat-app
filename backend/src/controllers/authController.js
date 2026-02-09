@@ -1,27 +1,25 @@
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
-import jwt from "jsonwebtoken";
-import crypto from "crypto";
 import Session from "../models/Session.js";
 
-const ACCESS_TOKEN_TTL = "3d";
-const REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
+import {
+  createAccessToken,
+  createRefreshToken,
+  hashToken,
+  setRefreshCookie,
+  REFRESH_TOKEN_TTL,
+} from "../utils/authUtils.js";
 
-const hashToken = (token) => {
-  return crypto.createHash("sha256").update(token).digest("hex");
-};
+import { createSession } from "../services/sessionService.js";
 
-const createRefreshToken = () => {
-  return crypto.randomBytes(64).toString("hex");
-};
-
+// ================= SIGN UP =================
 export const signUp = async (request, response) => {
   try {
     let { username, password, email, name, surname } = request.body;
 
-    username = username?.trim();
+    username = username?.trim().toLowerCase();
     password = password?.trim();
-    email = email?.trim();
+    email = email?.trim().toLowerCase();
     name = name?.trim();
     surname = surname?.trim();
 
@@ -30,59 +28,37 @@ export const signUp = async (request, response) => {
     }
 
     if (password.length < 8) {
-      return response
-        .status(400)
-        .json({ message: "Password must be at least 8 characters" });
+      return response.status(400).json({
+        message: "Password must be at least 8 characters",
+      });
     }
 
-    const existingUserName = await User.findOne({
-      username: username.toLowerCase(),
+    const existingUser = await User.findOne({
+      $or: [{ username }, { email }],
     });
 
-    if (existingUserName) {
-      return response.status(409).json({ message: "Username already exists" });
-    }
-
-    const existingEmail = await User.findOne({
-      email: email.toLowerCase(),
-    });
-
-    if (existingEmail) {
-      return response.status(409).json({ message: "Email already exists" });
+    if (existingUser) {
+      return response.status(409).json({
+        message:
+          existingUser.username === username
+            ? "Username already exists"
+            : "Email already exists",
+      });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
-      username: username.toLowerCase(),
+      username,
       hashedPassword,
-      email: email.toLowerCase(),
+      email,
       displayName: `${surname} ${name}`.trim(),
     });
 
-    // ===== AUTO LOGIN PART =====
+    const accessToken = createAccessToken(user._id);
+    const refreshToken = await createSession(user._id);
 
-    const accessToken = jwt.sign(
-      { userId: user._id },
-      process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: ACCESS_TOKEN_TTL },
-    );
-
-    const refreshToken = createRefreshToken();
-    const refreshTokenHash = hashToken(refreshToken);
-
-    await Session.create({
-      userId: user._id,
-      refreshTokenHash,
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL),
-    });
-
-    response.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: REFRESH_TOKEN_TTL,
-    });
+    setRefreshCookie(response, refreshToken);
 
     return response.status(201).json({
       message: "Signup & login successful",
@@ -94,29 +70,24 @@ export const signUp = async (request, response) => {
       },
     });
   } catch (error) {
-    console.error("Error while calling signUp", error);
+    console.error("signUp error:", error);
     return response.status(500).json({ message: "Internal server error" });
   }
 };
 
+// ================= SIGN IN =================
 export const signIn = async (request, response) => {
   try {
     let { username, password } = request.body;
 
-    username = username?.trim();
+    username = username?.trim().toLowerCase();
     password = password?.trim();
 
     if (!username || !password) {
       return response.status(400).json({ message: "All fields are required" });
     }
 
-    if (password.length < 8) {
-      return response
-        .status(400)
-        .json({ message: "Password must be at least 8 characters" });
-    }
-
-    const user = await User.findOne({ username: username.toLowerCase() });
+    const user = await User.findOne({ username });
 
     if (!user) {
       return response
@@ -132,27 +103,10 @@ export const signIn = async (request, response) => {
         .json({ message: "Username or password incorrect" });
     }
 
-    const accessToken = jwt.sign(
-      { userId: user._id },
-      process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: ACCESS_TOKEN_TTL },
-    );
+    const accessToken = createAccessToken(user._id);
+    const refreshToken = await createSession(user._id);
 
-    const refreshToken = createRefreshToken();
-    const refreshTokenHash = hashToken(refreshToken);
-
-    await Session.create({
-      userId: user._id,
-      refreshTokenHash,
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL),
-    });
-
-    response.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: REFRESH_TOKEN_TTL,
-    });
+    setRefreshCookie(response, refreshToken);
 
     return response.status(200).json({
       message: `User ${user.displayName} logged in`,
@@ -164,52 +118,54 @@ export const signIn = async (request, response) => {
       },
     });
   } catch (error) {
-    console.error("Error while calling signIn", error);
+    console.error("signIn error:", error);
     return response.status(500).json({ message: "Internal server error" });
   }
 };
 
+// ================= SIGN OUT =================
 export const signOut = async (request, response) => {
   try {
-    const refreshToken = request.cookies?.refreshToken;
+    const token = request.cookies?.refreshToken;
 
-    if (!refreshToken) {
+    if (!token) {
       return response.status(401).json({ message: "Unauthorized" });
     }
 
-    const refreshTokenHash = hashToken(refreshToken);
+    const refreshTokenHash = hashToken(token);
 
     await Session.deleteOne({ refreshTokenHash });
 
     response.clearCookie("refreshToken", {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     });
 
     return response.sendStatus(204);
   } catch (error) {
-    console.error("Error while calling signOut", error);
+    console.error("signOut error:", error);
     return response.status(500).json({ message: "Internal server error" });
   }
 };
 
+// ================= REFRESH TOKEN =================
 export const refreshToken = async (request, response) => {
   try {
-    const refreshToken = request.cookies?.refreshToken;
+    const token = request.cookies?.refreshToken;
 
-    if (!refreshToken) {
+    if (!token) {
       return response.status(401).json({ message: "Refresh token not found" });
     }
 
-    const refreshTokenHash = hashToken(refreshToken);
+    const refreshTokenHash = hashToken(token);
 
     const session = await Session.findOne({ refreshTokenHash });
 
     if (!session) {
       return response
         .status(403)
-        .json({ message: "Refresh token invalid or expired" });
+        .json({ message: "Invalid or expired refresh token" });
     }
 
     if (session.expiresAt.getTime() < Date.now()) {
@@ -217,32 +173,23 @@ export const refreshToken = async (request, response) => {
       return response.status(403).json({ message: "Refresh token expired" });
     }
 
-    const newAccessToken = jwt.sign(
-      { userId: session.userId },
-      process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: ACCESS_TOKEN_TTL },
-    );
-
+    const newAccessToken = createAccessToken(session.userId);
     const newRefreshToken = createRefreshToken();
     const newRefreshTokenHash = hashToken(newRefreshToken);
 
     session.refreshTokenHash = newRefreshTokenHash;
     session.expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL);
+
     await session.save();
 
-    response.cookie("refreshToken", newRefreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: REFRESH_TOKEN_TTL,
-    });
+    setRefreshCookie(response, newRefreshToken);
 
     return response.status(200).json({
       message: "Token refreshed",
       accessToken: newAccessToken,
     });
   } catch (error) {
-    console.error("Error while calling refreshToken", error);
+    console.error("refreshToken error:", error);
     return response.status(500).json({ message: "Internal server error" });
   }
 };
