@@ -1,8 +1,8 @@
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
 import Session from "../models/Session.js";
- 
-import { 
+
+import {
   createAccessToken,
   createRefreshToken,
   hashToken,
@@ -55,6 +55,7 @@ export const signUp = async (request, response) => {
       displayName: `${surname} ${name}`.trim(),
     });
 
+    // AUTO LOGIN
     const accessToken = createAccessToken(user._id);
     const refreshToken = await createSession(user._id);
 
@@ -190,6 +191,34 @@ export const refreshToken = async (request, response) => {
     });
   } catch (error) {
     console.error("refreshToken error:", error);
+    return response.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// ================= LOGOUT ALL DEVICES =================
+export const logoutAllDevices = async (request, response) => {
+  try {
+    const userId = request.user?.userId;
+
+    if (!userId) {
+      return response.status(401).json({ message: "Unauthorized" });
+    }
+
+    // Delete all sessions of this user
+    await Session.deleteMany({ userId });
+
+    // Clear refresh cookie on current device
+    response.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+
+    return response.status(200).json({
+      message: "Logged out from all devices",
+    });
+  } catch (error) {
+    console.error("logoutAllDevices error:", error);
     return response.status(500).json({ message: "Internal server error" });
   }
 };
