@@ -8,7 +8,7 @@ import {
   hashToken,
   setRefreshCookie,
   REFRESH_TOKEN_TTL,
-} from "../utils/authUtils.js";
+} from "../utils/authUtils.js"; 
 
 import { createSession } from "../services/sessionService.js";
 
