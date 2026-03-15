@@ -2,37 +2,47 @@ import mongoose from "mongoose";
 
 const participantSchema = new mongoose.Schema(
   {
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
     conversationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Conversation",
       required: true,
+      index: true,
     },
 
-    role: { type: String, enum: ["member", "admin"], default: "member" },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
 
-    joinedAt: { type: Date, default: Date.now },
-    leftAt: Date,
-    lastReadAt: Date,
+    role: {
+      type: String,
+      enum: ["member", "admin"],
+      default: "member",
+    },
 
-    nickname: String,
-    avatarUrl: String,
-    mutedUntil: Date,
+    joinedAt: {
+      type: Date,
+      default: Date.now,
+    },
 
-    isActive: {
-      type: Boolean,
-      default: true,
+    lastSeenAt: {
+      type: Date,
+      default: null,
+    },
+
+    unreadCount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  },
 );
 
-participantSchema.index({ userId: 1, conversationId: 1 }, { unique: true });
-participantSchema.index({ conversationId: 1 });
-participantSchema.index({ userId: 1 });
+participantSchema.index({ conversationId: 1, userId: 1 }, { unique: true });
 
 export default mongoose.model("Participant", participantSchema);

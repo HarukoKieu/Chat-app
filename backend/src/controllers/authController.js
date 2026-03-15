@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
 import Session from "../models/Session.js";
+import validator from "validator";
 
 import {
   createAccessToken,
@@ -8,7 +9,7 @@ import {
   hashToken,
   setRefreshCookie,
   REFRESH_TOKEN_TTL,
-} from "../utils/authUtils.js"; 
+} from "../utils/authUtils.js";
 
 import { createSession } from "../services/sessionService.js";
 
@@ -27,22 +28,21 @@ export const signUp = async (request, response) => {
       return response.status(400).json({ message: "All fields are required" });
     }
 
-    if (password.length < 8) {
+    if (!validator.isEmail(email)) {
       return response.status(400).json({
-        message: "Password must be at least 8 characters",
+        message: "Invalid email format",
       });
     }
 
-    const existingUser = await User.findOne({
-      $or: [{ username }, { email }],
-    });
+    if (email.length > 255) {
+      return response.status(400).json({
+        message: "Email too long",
+      });
+    }
 
-    if (existingUser) {
-      return response.status(409).json({
-        message:
-          existingUser.username === username
-            ? "Username already exists"
-            : "Email already exists",
+    if (password.length < 8) {
+      return response.status(400).json({
+        message: "Password must be at least 8 characters",
       });
     }
 
@@ -72,6 +72,11 @@ export const signUp = async (request, response) => {
     });
   } catch (error) {
     console.error("signUp error:", error);
+
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return response.status(409).json({ message: `${field} already exists` });
+    }
     return response.status(500).json({ message: "Internal server error" });
   }
 };
@@ -163,25 +168,62 @@ export const refreshToken = async (request, response) => {
 
     const session = await Session.findOne({ refreshTokenHash });
 
+    // 🔥 CASE 1: Token not found → possible reuse attack
     if (!session) {
-      return response
-        .status(403)
-        .json({ message: "Invalid or expired refresh token" });
+      console.warn("⚠️ Possible refresh token reuse detected");
+
+      response.clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      });
+
+      return response.status(403).json({
+        message: "Invalid or reused refresh token",
+      });
     }
 
+    // 🔥 CASE 2: Token revoked → reuse detected
+    if (session.isRevoked) {
+      console.warn("🚨 Reuse detected. Killing all sessions.");
+
+      await Session.deleteMany({ userId: session.userId });
+
+      response.clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      });
+
+      return response.status(403).json({
+        message: "Session compromised. Logged out from all devices.",
+      });
+    }
+
+    // 🔥 CASE 3: Expired
     if (session.expiresAt.getTime() < Date.now()) {
       await Session.deleteOne({ _id: session._id });
-      return response.status(403).json({ message: "Refresh token expired" });
+
+      return response.status(403).json({
+        message: "Refresh token expired",
+      });
     }
 
-    const newAccessToken = createAccessToken(session.userId);
+    // 🔥 ROTATION LOGIC
+
+    session.isRevoked = true;
+    await session.save();
+
     const newRefreshToken = createRefreshToken();
     const newRefreshTokenHash = hashToken(newRefreshToken);
 
-    session.refreshTokenHash = newRefreshTokenHash;
-    session.expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL);
+    await Session.create({
+      userId: session.userId,
+      refreshTokenHash: newRefreshTokenHash,
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL),
+    });
 
-    await session.save();
+    const newAccessToken = createAccessToken(session.userId);
 
     setRefreshCookie(response, newRefreshToken);
 

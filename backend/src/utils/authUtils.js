@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
-export const ACCESS_TOKEN_TTL = "3d";
+export const ACCESS_TOKEN_TTL = "7d";
 export const REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 export const createAccessToken = (userId) => {

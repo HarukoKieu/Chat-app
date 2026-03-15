@@ -16,6 +16,11 @@ const messageSchema = new mongoose.Schema(
       index: true,
     },
 
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+    },
+
     type: {
       type: String,
       enum: ["text", "image", "file", "system"],
@@ -25,9 +30,12 @@ const messageSchema = new mongoose.Schema(
     content: {
       type: String,
       trim: true,
+      maxlength: 3000,
     },
 
-    imageUrl: String,
+    imageUrl: {
+      type: String,
+    },
 
     editedAt: Date,
 
@@ -41,7 +49,11 @@ const messageSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-messageSchema.index({ conversationId: 1, createdAt: -1 });
+messageSchema.index(
+  { conversationId: 1, createdAt: -1 },
+  { partialFilterExpression: { isDeleted: false } },
+);
 messageSchema.index({ senderId: 1, createdAt: -1 });
+messageSchema.index({ replyTo: 1, createdAt: -1 });
 
 export default mongoose.model("Message", messageSchema);

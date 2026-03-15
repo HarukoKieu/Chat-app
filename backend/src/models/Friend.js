@@ -36,6 +36,7 @@ friendSchema.pre("save", async function () {
   }
 });
 
-friendSchema.index({ userA: 1, userB: 1 }, { unique: true });
+friendSchema.index({ userA: 1, isDeleted: 1 }, { unique: true });
+friendSchema.index({ userB: 1, isDeleted: 1 }, { unique: true });
 
 export default mongoose.model("Friend", friendSchema);

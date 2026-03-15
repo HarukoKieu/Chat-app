@@ -15,6 +15,11 @@ const sessionSchema = new mongoose.Schema(
       unique: true,
     },
 
+    isRevoked: {
+      type: Boolean,
+      default: false,
+    },
+
     expiresAt: {
       type: Date,
       required: true,

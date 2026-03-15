@@ -1,5 +1,49 @@
 import mongoose from "mongoose";
 
+const lastMessageSchema = new mongoose.Schema(
+  {
+    _id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+    },
+
+    content: {
+      type: String,
+      default: null,
+    },
+
+    senderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    createdAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
+const groupSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      trim: true,
+    },
+
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
 const conversationSchema = new mongoose.Schema(
   {
     type: {
@@ -8,43 +52,29 @@ const conversationSchema = new mongoose.Schema(
       required: true,
     },
 
-    directKey: {
-      type: String,
-      unique: true,
-      sparse: true,
-    },
-
-    name: {
-      type: String,
-      trim: true,
+    group: {
+      type: groupSchema,
       required: function () {
         return this.type === "group";
       },
     },
 
-    avatarUrl: String,
-
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+    lastMessage: {
+      type: lastMessageSchema,
+      default: null,
     },
 
-    lastMessageId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Message",
+    lastMessageAt: {
+      type: Date,
+      default: null,
+      index: true,
     },
-
-    isDeleted: {
-      type: Boolean,
-      default: false,
-    },
-
-    deletedAt: Date,
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  },
 );
 
-conversationSchema.index({ type: 1 });
-conversationSchema.index({ directKey: 1 }, { unique: true });
+conversationSchema.index({ lastMessageAt: -1 });
 
 export default mongoose.model("Conversation", conversationSchema);
