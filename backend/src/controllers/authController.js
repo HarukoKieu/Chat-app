@@ -14,7 +14,6 @@ import {
 
 import { createSession } from "../services/sessionService.js";
 
-// ================= SIGN UP =================
 export const signUp = async (request, response) => {
   try {
     let { username, password, email, name, surname } = request.body;
@@ -82,7 +81,6 @@ export const signUp = async (request, response) => {
   }
 };
 
-// ================= SIGN IN =================
 export const signIn = async (request, response) => {
   try {
     let { username, password } = request.body;
@@ -130,7 +128,6 @@ export const signIn = async (request, response) => {
   }
 };
 
-// ================= SIGN OUT =================
 export const signOut = async (request, response) => {
   try {
     const token = request.cookies?.refreshToken;
@@ -156,7 +153,6 @@ export const signOut = async (request, response) => {
   }
 };
 
-// ================= REFRESH TOKEN =================
 export const refreshToken = async (request, response) => {
   try {
     const token = request.cookies?.refreshToken;
