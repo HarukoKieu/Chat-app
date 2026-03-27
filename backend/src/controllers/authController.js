@@ -16,7 +16,7 @@ import { createSession } from "../services/sessionService.js";
 
 export const signUp = async (request, response) => {
   try {
-    let { username, password, email, name, surname } = request.body;
+    const { username, password, email, name, surname } = request.body;
 
     username = username?.trim().toLowerCase();
     password = password?.trim();

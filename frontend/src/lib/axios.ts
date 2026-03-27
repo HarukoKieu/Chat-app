@@ -33,7 +33,6 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    //
     originalRequest._retryCount = originalRequest._retryCount || 0;
 
     if (error.response?.status === 403 && originalRequest._retryCount < 5) {
